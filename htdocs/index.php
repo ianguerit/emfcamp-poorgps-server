@@ -26,10 +26,12 @@ $router->map('GET', '/scanner', function() use ($app) {
 
 // Used by badge app with scanner to send calibration data
 $router->map('POST', '/api/calibrate', function() use ($app) {
-    $app->calibrate();
     $data = json_decode(file_get_contents('php://input'), true);
     $app->recordFieldData($data);
-    echo json_encode([]);
+    $location = $app->estimateLocation($data['networks']);
+    if ($location) {
+        echo json_encode($location);
+    }
 });
 
 // Used by badge app to estimate approximate location
