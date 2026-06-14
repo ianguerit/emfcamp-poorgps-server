@@ -43,6 +43,22 @@ $router->map('POST', '/api/whereami', function() use ($app) {
     }
 });
 
+// Delete a device (when you want to remove your data)
+$router->map('POST', '/api/device/delete', function() use ($app) {
+    // traditional post data
+    $device_id = $_POST['device_id'];
+    if (empty($device_id)) {
+        // JSON based request body
+        $data = json_decode(file_get_contents('php://input'), true);
+        $device_id = $data['device_id'];
+    }
+    if ($app->deleteDevice($device_id)) {
+        http_response_code(200);
+    } else {
+        http_response_code(400); // bad request
+    }
+});
+
 $match = $router->match();
 
 if ($match) {

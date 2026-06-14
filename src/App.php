@@ -204,4 +204,31 @@ class App
 
         return $out;
     }
+
+    public function deleteDevice($device_id)
+    {
+        // clear all a device's data
+        $db = $this->getDatabase();
+
+        $res = $db->prepare(
+            "DELETE FROM field_location WHERE device_id = :device_id"
+        );
+        $res->execute(['device_id' => $device_id]);
+
+        $this->cleanNetworks();
+    }
+
+    public function cleanNetworks()
+    {
+        // clean networks that aren't linked to any locations
+        $db = $this->getDatabase();
+
+        $res = $db->prepare(
+            "DELETE n FROM `field_network` n
+            LEFT JOIN `field_network_location` fnl ON n.`id` = fnl.`field_network_id`
+            WHERE fnl.`field_network_id` IS NULL"
+        );
+        $res->execute();
+
+    }
 }
