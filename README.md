@@ -52,6 +52,15 @@ Request body should contain the following
         ]
     }
 
+### Delete all device data `POST /api/device/delete`
+Delete all data associated with a device id
+
+Specify the device id as either POST data or in a JSON body
+
+    {
+        "device_id": "delete device id"
+    }
+
 ### Get an esimtation of where you are `POST /api/whereami` 
 
 Request body should contain the following
