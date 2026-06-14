@@ -132,7 +132,7 @@ class App
             FROM field_network n
             JOIN field_network_location n_l ON n.id = n_l.field_network_id
             JOIN field_location l ON n_l.field_location_id = l.id
-            WHERE n.bssid IN ($placeholders)
+            WHERE n.bssid IN ($placeholders) AND hotspot = 0
         ";
 
         $db = $this->getDatabase();
@@ -188,7 +188,8 @@ class App
                 ST_Y(coordinates) AS lat
             FROM field_network_location
             LEFT JOIN field_network ON field_network_id = field_network.id
-            LEFT JOIN field_location ON field_location_id = field_location.id"
+            LEFT JOIN field_location ON field_location_id = field_location.id
+            WHERE hotspot = 0"
         );
         $res->execute();
         while($row = $res->fetch()) {

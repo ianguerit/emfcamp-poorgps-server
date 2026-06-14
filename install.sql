@@ -12,10 +12,11 @@ CREATE TABLE `field_location` (
 CREATE TABLE `field_network` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `channel` int(11) DEFAULT NULL,
-  `hidden` int(1) unsigned DEFAULT NULL,
+  `hidden` int(1) unsigned DEFAULT 0,
   `ssid` varchar(255) DEFAULT NULL,
   `bssid` varchar(100) DEFAULT NULL,
   `security` int(11) DEFAULT NULL,
+  `hotspot` int(1) unsigned DEFAULT 0,
   `created` datetime DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `bssid` (`bssid`)
