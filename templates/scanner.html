@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32-S3 Web Bluetooth GPS Companion</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between">
+
+    <!-- Top Navigation Header -->
+    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-10">
+        <div class="max-w-md mx-auto px-6 py-4 flex items-center justify-between">
+            <h1 class="text-lg font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+                ESP32 GPS SYNC
+            </h1>
+            <span id="conn-badge" class="px-3 py-1 text-xs font-semibold bg-red-950/40 text-red-400 border border-red-900/60 rounded-full transition-all duration-300">
+                Disconnected
+            </span>
+        </div>
+    </header>
+
+    <!-- Main App Container -->
+    <main class="flex-grow max-w-md w-full mx-auto px-6 py-6 flex flex-col gap-6 justify-center">
+        
+        <!-- Live Geolocation Metrics Card -->
+        <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+            <div class="absolute -right-12 -top-12 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl"></div>
+            
+            <h2 class="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-4">Your Smartphone GPS</h2>
+            
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-slate-950/60 rounded-2xl p-4 border border-slate-800/60">
+                    <span class="text-xs text-slate-500 block mb-1">Latitude</span>
+                    <span id="display-lat" class="text-xl font-bold font-mono text-cyan-400">Searching...</span>
+                </div>
+                <div class="bg-slate-950/60 rounded-2xl p-4 border border-slate-800/60">
+                    <span class="text-xs text-slate-500 block mb-1">Longitude</span>
+                    <span id="display-lon" class="text-xl font-bold font-mono text-cyan-400">Searching...</span>
+                </div>
+            </div>
+
+            <div class="mt-4 flex justify-between items-center bg-slate-950/40 p-3 rounded-xl border border-slate-800/30">
+                <div class="flex items-center gap-2">
+                    <div id="gps-dot" class="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse"></div>
+                    <span class="text-xs text-slate-400">Accuracy Margin</span>
+                </div>
+                <span id="display-acc" class="text-sm font-semibold text-slate-200">--</span>
+            </div>
+        </div>
+
+        <!-- Connection Control Card -->
+        <div class="flex flex-col gap-3">
+            <button id="btn-connect" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-4 px-6 rounded-2xl transition-all duration-300 shadow-lg shadow-cyan-500/15 transform active:scale-[0.98]">
+                Pair with ESP32 Scanner
+            </button>
+            <button id="btn-disconnect" class="w-full hidden bg-slate-900 border border-slate-800 hover:bg-slate-800 text-red-400 font-semibold py-3 px-6 rounded-2xl transition-all duration-300">
+                Disconnect Bluetooth
+            </button>
+        </div>
+
+        <!-- Real-time Status / Activity log -->
+        <div class="bg-slate-900/60 border border-slate-800/60 rounded-2xl p-5 flex flex-col gap-2">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Live Connection Console</h3>
+            <div id="log-terminal" class="bg-slate-950 rounded-xl p-3 h-32 font-mono text-xs overflow-y-auto text-emerald-400 flex flex-col gap-1 border border-slate-850">
+                <div>[SYSTEM] Web Bluetooth agent ready.</div>
+                <div>[SYSTEM] Please grant Location permissions.</div>
+            </div>
+        </div>
+
+        <!-- Compatibility Warning Block -->
+        <div id="warning-box" class="hidden bg-amber-950/20 border border-amber-900/40 rounded-2xl p-4 text-xs text-amber-300">
+            <strong class="block mb-1">🚨 Protocol Constraints</strong>
+            Web Bluetooth and Geolocation require an <span class="underline">HTTPS</span> connection or <span class="font-mono">localhost</span> to run safely under Google Chrome safety protocols.
+        </div>
+
+    </main>
+
+    <!-- Bottom Footer Status -->
+    <footer class="border-t border-slate-900 py-4 text-center">
+        <p class="text-[10px] text-slate-600">
+            Secured Web Bluetooth Standard Interface
+        </p>
+    </footer>
+
+    <script>
+        // Constants matching the ESP32-S3 Nordic UART definitions
+        const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const RX_CHARACTERISTIC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+        const TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+        let gattServer = null;
+        let rxCharacteristic = null;
+        let txCharacteristic = null;
+        let currentGPS = null;
+        let bleDevice = null;
+        let syncTimer = null;
+
+        const btnConnect = document.getElementById('btn-connect');
+        const btnDisconnect = document.getElementById('btn-disconnect');
+        const connBadge = document.getElementById('conn-badge');
+        const terminal = document.getElementById('log-terminal');
+        const warningBox = document.getElementById('warning-box');
+
+        // Security check for Web APIs
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+            warningBox.classList.remove('hidden');
+        }
+
+        // Initialize Geolocation Stream
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(
+                (pos) => {
+                    currentGPS = {
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy
+                    };
+                    
+                    document.getElementById('display-lat').textContent = currentGPS.latitude.toFixed(6);
+                    document.getElementById('display-lon').textContent = currentGPS.longitude.toFixed(6);
+                    document.getElementById('display-acc').textContent = `± ${currentGPS.accuracy.toFixed(1)} meters`;
+                    
+                    const dot = document.getElementById('gps-dot');
+                    dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
+                    log(`GPS lock updated (Accuracy: ${currentGPS.accuracy.toFixed(1)}m)`);
+                },
+                (err) => {
+                    log(`GPS Error: ${err.message}`, 'error');
+                    const dot = document.getElementById('gps-dot');
+                    dot.className = "w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse";
+                },
+                { enableHighAccuracy: true, maximumAge: 1000 }
+            );
+        } else {
+            log('Error: Geolocation not supported by browser', 'error');
+        }
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            if (type === 'error') entry.className = 'text-red-400';
+            else if (type === 'success') entry.className = 'text-cyan-400';
+            
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            terminal.appendChild(entry);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        // Web Bluetooth Initiation API
+        btnConnect.addEventListener('click', async () => {
+            try {
+                log('Scanning for ESP32-S3 Bluetooth peripheral...');
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [
+                        { namePrefix: 'ESP32' },
+                        { services: [NUS_SERVICE_UUID] }
+                    ],
+                    optionalServices: [NUS_SERVICE_UUID]
+                });
+
+                log(`Found: ${bleDevice.name}. Connecting to GATT Server...`);
+                
+                bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+                gattServer = await bleDevice.gatt.connect();
+                
+                log('Fetching BLE Custom UART Service...');
+                const service = await gattServer.getPrimaryService(NUS_SERVICE_UUID);
+                
+                log('Locating data characteristics...');
+                rxCharacteristic = await service.getCharacteristic(RX_CHARACTERISTIC_UUID);
+                txCharacteristic = await service.getCharacteristic(TX_CHARACTERISTIC_UUID);
+
+                // Subscribe to TX responses from ESP32
+                await txCharacteristic.startNotifications();
+                txCharacteristic.addEventListener('characteristicvaluechanged', (e) => {
+                    const decoder = new TextDecoder();
+                    const text = decoder.decode(e.target.value);
+                    log(`ESP32 Response: ${text}`, 'success');
+                });
+
+                updateConnectionState(true);
+                log('Successfully connected and subscribed to ESP32!', 'success');
+
+                // Start automatic periodically synchronized data transmission (every 5 seconds)
+                syncTimer = setInterval(transmitLocation, 5000);
+                transmitLocation();
+
+            } catch (err) {
+                log(`Connection Failed: ${err.message}`, 'error');
+                updateConnectionState(false);
+            }
+        });
+
+        btnDisconnect.addEventListener('click', () => {
+            if (bleDevice && bleDevice.gatt.connected) {
+                bleDevice.gatt.disconnect();
+            }
+        });
+
+        function onDisconnected() {
+            log('Bluetooth disconnected from ESP32-S3.', 'error');
+            updateConnectionState(false);
+        }
+
+        function updateConnectionState(isConnected) {
+            if (isConnected) {
+                connBadge.textContent = 'Connected';
+                connBadge.className = 'px-3 py-1 text-xs font-semibold bg-emerald-950/40 text-emerald-400 border border-emerald-900/60 rounded-full transition-all duration-300';
+                btnConnect.classList.add('hidden');
+                btnDisconnect.classList.remove('hidden');
+            } else {
+                connBadge.textContent = 'Disconnected';
+                connBadge.className = 'px-3 py-1 text-xs font-semibold bg-red-950/40 text-red-400 border border-red-900/60 rounded-full transition-all duration-300';
+                btnConnect.classList.remove('hidden');
+                btnDisconnect.classList.add('hidden');
+                
+                if (syncTimer) {
+                    clearInterval(syncTimer);
+                    syncTimer = null;
+                }
+            }
+        }
+
+        async function transmitLocation() {
+            if (!rxCharacteristic || !currentGPS) {
+                if (!currentGPS) log('Skipping sync: Awaiting valid GPS coordinates.', 'error');
+                return;
+            }
+
+            try {
+                // Short, compact CSV format to safely fit inside standard BLE MTU packet
+                const payloadStr = `${currentGPS.latitude.toFixed(6)},${currentGPS.longitude.toFixed(6)},${currentGPS.accuracy.toFixed(1)}`;
+                
+                const encoder = new TextEncoder();
+                await rxCharacteristic.writeValue(encoder.encode(payloadStr));
+                log(`Location pushed: ${payloadStr}`);
+            } catch (err) {
+                log(`Transmission failed: ${err.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
