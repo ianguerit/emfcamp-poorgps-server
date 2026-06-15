@@ -142,7 +142,11 @@ class App
         $savedLocations = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         if (empty($savedLocations)) {
-            return null; // None of these networks have been mapped yet
+            // None of these networks have been mapped yet
+            return [
+                'status' => 'not-found',
+                'detail' => 'None of the provided network(s) have been mapped yet, unable to estimate location'
+            ];
         }
 
         $totalWeight = 0;
@@ -166,12 +170,18 @@ class App
         // 4. Calculate final weighted average
         if ($totalWeight > 0) {
             return [
+                'status' => 'estimate',
+                'detail' => 'Estimated location',
+                'weight' => $totalWeight,
                 'latitude'  => $weightedLat / $totalWeight,
                 'longitude' => $weightedLng / $totalWeight
             ];
         }
 
-        return null;
+        return [
+            'status' => 'not-found',
+            'detail' => 'Not enough signal strength to be confident with a match, unable to estimate location'
+        ];
     }
 
     public function getMapData()

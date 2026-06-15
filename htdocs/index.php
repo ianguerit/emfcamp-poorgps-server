@@ -16,7 +16,7 @@ $router->map('GET', '/', function() use ($app) {
 
 // Used by default page, lists networks
 $router->map('GET', '/api/networks', function() use ($app) {
-    echo json_encode($app->getMapData());
+    echo json_encode($app->getMapData(), JSON_PRETTY_PRINT);
 });
 
 // Used as companion app to pair with badge app to share GPS
@@ -30,7 +30,7 @@ $router->map('POST', '/api/calibrate', function() use ($app) {
     $app->recordFieldData($data);
     $location = $app->estimateLocation($data['networks']);
     if ($location) {
-        echo json_encode($location);
+        echo json_encode($location, JSON_PRETTY_PRINT);
     }
 });
 
@@ -39,7 +39,7 @@ $router->map('POST', '/api/whereami', function() use ($app) {
     $data = json_decode(file_get_contents('php://input'), true);
     $location = $app->estimateLocation($data['networks']);
     if ($location) {
-        echo json_encode($location);
+        echo json_encode($location, JSON_PRETTY_PRINT);
     }
 });
 
@@ -57,6 +57,10 @@ $router->map('POST', '/api/device/delete', function() use ($app) {
     } else {
         http_response_code(400); // bad request
     }
+});
+
+$router->map('GET', '/test', function() use ($app) {
+    require(DIR_TEMPLATES.'test.html');
 });
 
 $match = $router->match();

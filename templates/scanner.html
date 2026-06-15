@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32-S3 Web Bluetooth GPS Companion</title>
+    <title>PoorGPS - GPS Calibration</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
@@ -16,7 +16,7 @@
     <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-10">
         <div class="max-w-md mx-auto px-6 py-4 flex items-center justify-between">
             <h1 class="text-lg font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
-                ESP32 GPS SYNC
+                PoorGPS - GPS Calibration
             </h1>
             <span id="conn-badge" class="px-3 py-1 text-xs font-semibold bg-red-950/40 text-red-400 border border-red-900/60 rounded-full transition-all duration-300">
                 Disconnected
@@ -56,7 +56,7 @@
         <!-- Connection Control Card -->
         <div class="flex flex-col gap-3">
             <button id="btn-connect" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-4 px-6 rounded-2xl transition-all duration-300 shadow-lg shadow-cyan-500/15 transform active:scale-[0.98]">
-                Pair with ESP32 Scanner
+                Pair with Badge
             </button>
             <button id="btn-disconnect" class="w-full hidden bg-slate-900 border border-slate-800 hover:bg-slate-800 text-red-400 font-semibold py-3 px-6 rounded-2xl transition-all duration-300">
                 Disconnect Bluetooth

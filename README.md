@@ -22,6 +22,9 @@ This is the companion page for collecting callbration data.
 
 Use on an Android phone (or something else that supports web based BLE APIs) to pair with an ESP32-S3 (and eventually the badge) to help collect callibrating data.
 
+### Test `/test`
+Simple test page
+
 ## API End points
 Currently these are all unauthenticated
 

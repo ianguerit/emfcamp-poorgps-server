@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WiFi Signal Map with Filter</title>
+    <title>WiFi Map</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     
@@ -31,7 +31,7 @@
         .filter-group {
             margin-top: 10px;
         }
-        .filter-group input {
+        .filter-group input, .filter-group select {
             width: 100%;
             padding: 6px;
             box-sizing: border-box;
@@ -48,11 +48,20 @@
 <body>
 
     <div class="control-panel">
-        <h3>WiFi Signal Mapper</h3>
+        <h3>WiFi Map</h3>
         
         <div class="filter-group">
-            <label for="bssidFilter"><strong>Filter by SSID/BSSID:</strong></label>
+            <label for="bssidFilter"><strong>SSID/BSSID:</strong></label>
             <input type="text" id="bssidFilter" placeholder="e.g., AA:BB:CC:DD:EE:FF or 'all'">
+        </div>
+        <div class="filter-group">
+            <label for="bssidFilter"><strong>Signal strength:</strong></label>
+            <select id="signalFilter">
+                <option value="any" selected>Any</option>
+                <option value="low">Low and better</option>
+                <option value="medium">Medium and better </option>
+                <option value="high">High and better</option>
+            </select>
         </div>
 
         <div id="stats">Loading data...</div>
@@ -79,6 +88,30 @@
         let markerLayerGroup = L.layerGroup().addTo(map);
         let heatLayer = null;
 
+        // Math logic to turn RSSI into a physical estimated radius in meters
+        function calculateRadius(rssi) {
+            // Strong signal (-30) -> Small radius (5 meters)
+            // Weak signal (-95) -> Large radius (60 meters)
+            const minRssi = -30;
+            const maxRssi = -95;
+            const minRadius = 5;
+            const maxRadius = 60;
+
+            if (rssi >= minRssi) return minRadius;
+            if (rssi <= maxRssi) return maxRadius;
+
+            // Linear interpolation
+            return minRadius + ((rssi - minRssi) / (maxRssi - minRssi)) * (maxRadius - minRadius);
+        }
+
+        // Color grading for the radar rings
+        function getRadarColor(rssi) {
+            if (rssi > -60) return '#00ff00'; // Neon Green (Excellent)
+            if (rssi > -75) return '#ffff00'; // Yellow (Decent)
+            if (rssi > -85) return '#ff5500'; // Orange (Weak)
+            return '#ff0000';                 // Red (Critical Drop)
+        }
+
         // Helper function to normalize RSSI (0 to 1)
         function normalizeRssi(rssi) {
             const minRssi = -100;
@@ -89,7 +122,11 @@
         }
 
         // Core rendering function that can be re-run on demand
-        function renderMap(filterBssid = '') {
+        function renderMap() {
+        
+            filterValue = document.getElementById('bssidFilter').value;
+            signalValue = document.getElementById('signalFilter').value;
+
             // 1. Clear existing visualization layers
             markerLayerGroup.clearLayers();
             if (heatLayer) {
@@ -100,12 +137,15 @@
             const bounds = [];
             
             // Clean up the filter string for reliable matching
-            const targetBssid = filterBssid.trim().toLowerCase();
+            const targetValue = filterValue.trim().toLowerCase();
 
             // 2. Filter the raw data array
             const filteredData = allData.filter(point => {
-                if (!targetBssid || targetBssid === 'all') return true;
-                return point.bssid.toLowerCase().includes(targetBssid) || point.ssid.toLowerCase().includes(targetBssid);
+                let include = true;
+                include = include && (!targetValue || targetValue === 'all');
+                include = include && (point.bssid.toLowerCase().includes(targetValue) || point.ssid.toLowerCase().includes(targetValue));
+                include = include && (signalValue == 'any' || signalValue == 'low' && point.rssi < -80 || signalValue == 'medium' && point.rssi < -60 || signalValue == 'high' && point.rssi >= -60);
+                return include;
             });
 
             if (filteredData.length === 0) {
@@ -113,7 +153,6 @@
                 return;
             }
 
-            // 3. Process filtered data for the map
             filteredData.forEach(point => {
                 const lat = parseFloat(point.lat);
                 const lng = parseFloat(point.lng);
@@ -173,7 +212,10 @@
         // 6. Event listener for the input field
         // 'input' fires instantly on typing, pasting, or deleting text
         document.getElementById('bssidFilter').addEventListener('input', (e) => {
-            renderMap(e.target.value);
+            renderMap();
+        });
+        document.getElementById('signalFilter').addEventListener('input', (e) => {
+            renderMap();
         });
 
         // Initial setup execution
