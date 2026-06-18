@@ -3,12 +3,14 @@ namespace Emf;
 
 use Pdo;
 use Dotenv\Dotenv;
+use Phpfastcache\Helper\Psr16Adapter;
 
 
 class App
 {
 
     private $db;
+    private $cache;
 
     public function __construct()
     {
@@ -21,11 +23,18 @@ class App
         $password = $_ENV['DB_PASS'];
 
         $this->db = new Pdo($dsn, $username, $password);
+        $defaultDriver = 'Files';
+        $this->cache = new Psr16Adapter($defaultDriver);
     }
 
     private function getDatabase()
     {
         return $this->db;
+    }
+
+    private function getCache()
+    {
+        return $this->cache;
     }
 
     public function recordFieldData(array $data)
@@ -101,6 +110,20 @@ class App
         return $db->lastInsertId();
     }
 
+    private function haversineDistance($lat1, $lon1, $lat2, $lon2)
+    {
+        $earthRadius = 6371000; // in meters
+
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+
+        $a = sin($dLat/2) * sin($dLat/2) +
+             cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
+             sin($dLon/2) * sin($dLon/2);
+
+        $c = 2 * atan2(sqrt($a), sqrt(1-$a));
+        return $earthRadius * $c; // returns distance in meters
+    }
 
     /**
      * Estimates GPS location using Weighted Centroid Localization
@@ -124,6 +147,7 @@ class App
         $placeholders = implode(',', array_fill(0, count($bssids), '?'));
         
         // We use ST_X() and ST_Y() to extract Long/Lat from the SPATIAL point column
+        // age_seconds is how old the GPS location was at the time of recording
         $sql = "
             SELECT 
                 n.bssid,
@@ -152,36 +176,81 @@ class App
         $totalWeight = 0;
         $weightedLat = 0;
         $weightedLng = 0;
+        $calculatedNodes = [];
 
-        // 3. Apply the WCL algorithm
+        // Constants for Distance Estimation
+        $measuredPower = -40; // RSSI at 1 meter
+        $pathLossExponent = 3.5; // Indoor environment with obstructions
+
+        // Pass 1: Find the Weighted Centroid (Location)
         foreach ($savedLocations as $loc) {
             $bssid = $loc['bssid'];
-            $rssi = $rssiMap[$bssid] ?? -100; // Fallback to weak signal if missing
+            $rssi = $rssiMap[$bssid] ?? -100;
 
-            // Convert logarithmic RSSI to a linear weight 
-            // (Stronger signal = drastically higher weight)
             $weight = pow(10, $rssi / 20);
-
             $weightedLat += $loc['latitude'] * $weight;
             $weightedLng += $loc['longitude'] * $weight;
             $totalWeight += $weight;
-        }
 
-        // 4. Calculate final weighted average
-        if ($totalWeight > 0) {
-            return [
-                'status' => 'estimate',
-                'detail' => 'Estimated location',
-                'weight' => $totalWeight,
-                'latitude'  => $weightedLat / $totalWeight,
-                'longitude' => $weightedLng / $totalWeight
+            // Estimate distance to this specific router in meters
+            $estimatedDistance = pow(10, ($measuredPower - $rssi) / (10 * $pathLossExponent));
+
+            $calculatedNodes[] = [
+                'lat' => $loc['latitude'],
+                'lng' => $loc['longitude'],
+                'weight' => $weight,
+                'est_dist' => $estimatedDistance
             ];
         }
 
-        return [
-            'status' => 'not-found',
-            'detail' => 'Not enough signal strength to be confident with a match, unable to estimate location'
-        ];
+        $estLat = $weightedLat / $totalWeight;
+        $estLng = $weightedLng / $totalWeight;
+
+        // Pass 2: Calculate Accuracy (Weighted Deviation + Proximity Factor)
+        $weightedDistanceSum = 0;
+        foreach ($calculatedNodes as $node) {
+            // How far is the computed center from this router's known position?
+            $distFromCenter = $this->haversineDistance($estLat, $estLng, $node['lat'], $node['lng']);
+
+            // Weight the deviation
+            $weightedDistanceSum += ($distFromCenter + $node['est_dist']) * $node['weight'];
+        }
+
+        // Weighted average error radius
+        $accuracyMeters = $weightedDistanceSum / $totalWeight;
+
+        // Fallback: If only 1 router is found, we can't calculate a geometric spread.
+        // The accuracy is simply our estimated distance to that single router.
+        if (count($calculatedNodes) === 1) {
+            $accuracyMeters = $calculatedNodes[0]['est_dist'];
+        }
+
+        // Sanity Cap: Ensure the accuracy radius reflects physical limitations
+        // (e.g., Wi-Fi signals rarely drop below 2 meters accuracy or exceed 150 meters functionally)
+        $accuracyMeters = max(3.0, min($accuracyMeters, 150.0));
+
+        if($accuracyMeters < 150) {
+            
+            $villages = $this->getClosestVillages($estLng, $estLat);
+
+            return [
+                'status' => 'estimate',
+                'detail' => 'Estimated location',
+                'latitude'        => $estLat,
+                'longitude'       => $estLng,
+                'accuracy_meters' => round($accuracyMeters, 2),
+                'local_villages' => $villages
+            ];
+
+        } else {
+
+            // 
+            return [
+                'status' => 'not-found',
+                'detail' => 'Not enough signal strength / conflicting data, unable to be confident with a match, unable to estimate location'
+            ];
+
+        }
     }
 
     public function getMapData()
@@ -213,6 +282,93 @@ class App
         }
 
         return $out;
+    }
+
+    private function getClosestVillages($long, $lat)
+    {
+        $this->loadVillages();
+
+
+        $db = $this->getDatabase();
+
+        $res = $db->prepare('
+SELECT 
+    v.*,
+    ST_X(vl.coordinates) AS longitude,
+    ST_Y(vl.coordinates) AS latitude,
+    ROUND(ST_Distance_Sphere(vl.coordinates, POINT(:long, :lat)), 2) AS distance
+FROM field_village_location vl
+JOIN field_village v ON vl.field_village_id = v.id
+ORDER BY distance ASC
+LIMIT 5
+        ');
+        $res->execute([
+            'long' => $long,
+            'lat' => $lat
+        ]);
+        
+        $local_villages = [];
+        while($row = $res->fetch()) {
+            $local_villages[] = [
+                'id' => $row['id'],
+                'name' => $row['name'],
+                'url' => $row['url'],
+                'external_url'=> $row['external_url'],
+                'descriptipn' => $row['description'],
+                'num_members' => $row['num_members'],
+                'longitude'=> $row['longitude'],
+                'latitude' => $row['latitude'],
+                'distance' => $row['distance']
+            ];
+        }
+
+        return $local_villages;
+    }
+
+    private function loadVillages()
+    {
+        $db = $this->getDatabase();
+       
+        $res = $db->prepare('SELECT COUNT(*) as total FROM field_village');
+        $res->execute();
+        $row = $res->fetch();
+
+        if ($row['total'] == 0){
+            
+            $villages = json_decode(file_get_contents('https://www.emfcamp.org/api/villages'), true);
+
+            $res_village = $db->prepare(
+                'INSERT INTO field_village
+                (id, name, url, external_url, description, num_members )
+                VALUES
+                (:id, :name, :url, :external_url, :description, :num_members)'
+            );
+            $res_location = $db->prepare(
+                'INSERT INTO field_village_location
+                (field_village_id, coordinates)
+                VALUES
+                (:field_village_id, POINT(:long,  :lat))'
+            );
+
+            foreach ($villages as $village) {
+                $res_village->execute([
+                    'id' => $village['id'],
+                    'name' => $village['name'],
+                    'url' => $village['url'],
+                    'external_url' => $village['external_url'],
+                    'description' => $village['description'],
+                    'num_members' => $village['num_members']
+                ]);
+                if(isset($village['location']) && isset($village['location']['coordinates'])) {
+                    $res_location->execute([
+                        'field_village_id' => $village['id'],
+                        'long' => $village['location']['coordinates'][0],
+                        'lat' => $village['location']['coordinates'][1]
+                    ]);
+                }
+            }
+        }
+
     }
 
     public function deleteDevice($device_id)

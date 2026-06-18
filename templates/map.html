@@ -142,8 +142,7 @@
             // 2. Filter the raw data array
             const filteredData = allData.filter(point => {
                 let include = true;
-                include = include && (!targetValue || targetValue === 'all');
-                include = include && (point.bssid.toLowerCase().includes(targetValue) || point.ssid.toLowerCase().includes(targetValue));
+                include = include && ((!targetValue || targetValue === 'all') || (point.bssid.toLowerCase().includes(targetValue) || point.ssid.toLowerCase().includes(targetValue)));
                 include = include && (signalValue == 'any' || signalValue == 'low' && point.rssi < -80 || signalValue == 'medium' && point.rssi < -60 || signalValue == 'high' && point.rssi >= -60);
                 return include;
             });

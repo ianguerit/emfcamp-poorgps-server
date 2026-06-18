@@ -8,7 +8,7 @@ CREATE TABLE `field_location` (
   PRIMARY KEY (`id`),
   KEY `device_id` (`device_id`),
   SPATIAL KEY `coordinates` (`coordinates`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `field_network` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -21,7 +21,7 @@ CREATE TABLE `field_network` (
   `created` datetime DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `bssid` (`bssid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `field_network_location` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -33,4 +33,25 @@ CREATE TABLE `field_network_location` (
   KEY `fk_fnl_field_network` (`field_network_id`),
   CONSTRAINT `fk_fnl_field_location` FOREIGN KEY (`field_location_id`) REFERENCES `field_location` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_fnl_field_network` FOREIGN KEY (`field_network_id`) REFERENCES `field_network` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE `field_village` (
+  `id` int(11) NOT NULL,
+  `name` varchar(255) DEFAULT NULL,
+  `url` varchar(255) DEFAULT NULL,
+  `external_url` varchar(255) DEFAULT NULL,
+  `description` mediumtext DEFAULT NULL,
+  `num_members` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+
+CREATE TABLE `field_village_location` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `field_village_id` int(11) DEFAULT NULL,
+  `coordinates` point NOT NULL,
+  PRIMARY KEY (`id`),
+  SPATIAL KEY `coordinates` (`coordinates`),
+  KEY `fk_fnl_field_village` (`field_village_id`),
+  CONSTRAINT `fk_fnl_field_village` FOREIGN KEY (`field_village_id`) REFERENCES `field_village` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb4_unicode_ci;
