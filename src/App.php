@@ -110,6 +110,33 @@ class App
         return $db->lastInsertId();
     }
 
+    /**
+Find hotspots and potential issues
+SELECT 
+n.bssid,
+n.ssid,
+COUNT(DISTINCT l.id) AS total_scans,
+MAX(ST_Distance_Sphere(l.coordinates, Point(center.avg_lng, center.avg_lat))) AS max_distance_from_center_meters
+FROM field_network n
+JOIN field_network_location n_l ON n.id = n_l.field_network_id
+JOIN field_location l ON n_l.field_location_id = l.id
+JOIN (
+SELECT 
+n2.bssid,
+AVG(ST_X(l2.coordinates)) AS avg_lng,
+AVG(ST_Y(l2.coordinates)) AS avg_lat
+FROM field_network n2
+JOIN field_network_location n_l2 ON n2.id = n_l2.field_network_id
+JOIN field_location l2 ON n_l2.field_location_id = l2.id
+GROUP BY n2.bssid
+) AS center ON n.bssid = center.bssid
+WHERE n.hotspot = 0
+GROUP BY n.bssid, n.ssid, center.avg_lng, center.avg_lat
+HAVING max_distance_from_center_meters > 500 
+ORDER BY max_distance_from_center_meters DESC; 
+     *
+     */
+
     private function haversineDistance($lat1, $lon1, $lat2, $lon2)
     {
         $earthRadius = 6371000; // in meters
@@ -136,6 +163,10 @@ class App
         if (empty($observedNetworks)) {
             return null;
         }
+
+        $now = DateTime::createFromFormat('U.u', microtime(true));
+        $timestamp = $now->getTimestamp();
+        $updated_at = $timestamp.".".$now->format("u");
 
         // 1. Extract BSSIDs to fetch known locations from database
         $bssids = array_column($observedNetworks, 'bssid');
@@ -169,7 +200,8 @@ class App
             // None of these networks have been mapped yet
             return [
                 'status' => 'not-found',
-                'detail' => 'None of the provided network(s) have been mapped yet, unable to estimate location'
+                'detail' => 'None of the provided network(s) have been mapped yet, unable to estimate location',
+                'updated_at' => $updated_at
             ];
         }
 
@@ -236,10 +268,11 @@ class App
             return [
                 'status' => 'estimate',
                 'detail' => 'Estimated location',
-                'latitude'        => $estLat,
-                'longitude'       => $estLng,
-                'accuracy_meters' => round($accuracyMeters, 2),
-                'local_villages' => $villages
+                'lat'        => $estLat,
+                'lng'       => $estLng,
+                'accuracy' => round($accuracyMeters, 2),
+                'local_villages' => $villages,
+                'updated_at' => $updated_at
             ];
 
         } else {
@@ -247,7 +280,8 @@ class App
             // 
             return [
                 'status' => 'not-found',
-                'detail' => 'Not enough signal strength / conflicting data, unable to be confident with a match, unable to estimate location'
+                'detail' => 'Not enough signal strength / conflicting data, unable to be confident with a match, unable to estimate location',
+                'updated_at' => $updated_at
             ];
 
         }
@@ -268,7 +302,7 @@ class App
             FROM field_network_location
             LEFT JOIN field_network ON field_network_id = field_network.id
             LEFT JOIN field_location ON field_location_id = field_location.id
-            WHERE hotspot = 0 AND age_seconds < 500"
+            WHERE hotspot = 0 AND age_seconds < 60"
         );
         $res->execute();
         while($row = $res->fetch()) {

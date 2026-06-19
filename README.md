@@ -3,13 +3,13 @@ Pairs with the proof of concept badge app (see companion repo).
 
 Provides an API for getting estimated GPS coordinates based on current WiFi access point / local WiFi network stations.
 
-Calibrated by collecting data with the badge app paired with an Android phone (see /scanner) or potentially even the GPS Hexpansion.
+Calibrated by collecting data with the badge app paired with an Android phone (see /calibrate) or potentially even the GPS Hexpansion.
 
 
 ## Approach
 Tried to keep this as simple and approachable as possible.
 
-I have 'vibe coded' a few of the pages (e.g. scanner) for speed - but either way not precious on how things are currently coded.
+I have 'vibe coded' a few of the pages (e.g. calibrate) for speed - but either way not precious on how things are currently coded.
 
 
 ## Key pages
@@ -92,7 +92,7 @@ The response body will be as follows
 
 
 ## Hosting 
-I am happy to host for EMF 2026 on https://emfcamp.illumo.dev
+I am happy to host for EMF 2026 on https://poorgps.emfcamp.illumo.dev
 
 Feel free to use the APIs for other applications.
 

@@ -20,8 +20,8 @@ $router->map('GET', '/api/networks', function() use ($app) {
 });
 
 // Used as companion app to pair with badge app to share GPS
-$router->map('GET', '/scanner', function() use ($app) {
-    require(DIR_TEMPLATES.'scanner.html');
+$router->map('GET', '/calibrate', function() use ($app) {
+    require(DIR_TEMPLATES.'calibrate.html');
 });
 
 // Used by badge app with scanner to send calibration data
